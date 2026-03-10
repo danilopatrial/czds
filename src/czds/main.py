@@ -130,6 +130,27 @@ def _set_cooldown(tld: str) -> None:
     f.write_text(str(time.time()))
 
 
+def _cooldown_remaining(tld: str) -> float:
+    f: Path = _cooldown_file(tld)
+
+    if not f.exists(): return 0
+
+    ts: float = float(f.read_text())
+    remaining: float = 86400 - (time.time() - ts)
+
+    return max(0, remaining)
+
+
+def _format_seconds(seconds: float) -> str:
+    seconds = int(seconds)
+
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
 def _download_file(url: str, token: str, output_dir: Path) -> Path:
 
     r: requests.Response = requests.get(
@@ -232,13 +253,14 @@ def download(**kwargs) -> None | NoReturn:
             continue
 
         if not ignore_cd and not _cooldown_ok(tld):
-            print(f"{tld}: cooldown active (24h)")
+            remaining: float = _cooldown_remaining(tld)
+            print(f"{tld}: cooldown active ({_format_seconds(remaining)} remaining)")
             continue
 
         print(f"Downloading .{tld.upper()} zone files...")
 
-        gz_path: Path = _download_file(url, token, output_dir)
         _set_cooldown(tld)
+        gz_path: Path = _download_file(url, token, output_dir)
 
         if not kwargs.get("no_gunzip"):
             txt_path: Path = gunzip(gz_path)
