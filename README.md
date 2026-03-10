@@ -36,6 +36,7 @@
 # Install pipx if you don't have it
 python3 -m pip install --user pipx
 python3 -m pipx ensurepath
+exit # restart terminal after installing pipx
 ```
 
 ```bash
@@ -330,4 +331,5 @@ Results are deduplicated and returned in file order.
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
 
