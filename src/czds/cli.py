@@ -1,4 +1,4 @@
-#!usr/bin/env python3
+#!/usr/bin/env python3
 # Command Line Interface
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ def cli(**kwargs) -> None:
 @click.option("--no-gunzip", "-G", is_flag=True, help="Skip .txt.gz unziping.")
 @click.option("--ignore-cooldown", is_flag=True, help="[!] Ignore 24h cooldown. More info below.")
 @click.option("--aria2c", is_flag=True, help="Use aria2c for downloading.")
+@click.option("--no-replace", is_flag=True, help="Keep existing zone files; new download gets a unique name e.g. com(1).txt.")
 def download(**kwargs) -> None:
     """
     Download Zone Files.
@@ -114,11 +115,11 @@ def getpath(**kwargs) -> None:
 
     x: str = kwargs.get("x")
 
-    if x == "data": print(f"{DATA_DIR._raw_path}")
-    if x == "cache": print(f"{CACHE_DIR._raw_path}")
-    if x == "config": print(f"{CONFIG_DIR._raw_path}")
+    if x == "data": print(f"{DATA_DIR}")
+    if x == "cache": print(f"{CACHE_DIR}")
+    if x == "config": print(f"{CONFIG_DIR}")
 
     if x == "all":
-        print(f"Config dir:  {CONFIG_DIR._raw_path}")
-        print(f"Data dir:    {DATA_DIR._raw_path}")
-        print(f"Cache dir:   {CACHE_DIR._raw_path}")
+        print(f"Config dir:  {CONFIG_DIR}")
+        print(f"Data dir:    {DATA_DIR}")
+        print(f"Cache dir:   {CACHE_DIR}")

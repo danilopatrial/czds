@@ -1,4 +1,4 @@
-#!usr/bin/env python3
+#!/usr/bin/env python3
 
 from __future__ import annotations
 
@@ -44,17 +44,17 @@ DEFAULT_CONFIG: dict = {
 
 # loads default config
 if not CONFIG_FILE.exists() or CONFIG_FILE.stat().st_size == 0:
-    f = CONFIG_FILE.open("w", encoding="utf-8")
-    json.dump(DEFAULT_CONFIG, f, indent=2); f.close()
+    with CONFIG_FILE.open("w", encoding="utf-8") as f:
+        json.dump(DEFAULT_CONFIG, f, indent=2)
 
 
 try:  # load config file
     if "CZDS_CONFIG" in os.environ:
         CONFIG: dict = json.loads(os.environ["CZDS_CONFIG"])
-    
+
     else:
-        f = CONFIG_FILE.open("r", encoding="utf-8")
-        CONFIG: dict = json.load(f); f.close()
+        with CONFIG_FILE.open("r", encoding="utf-8") as f:
+            CONFIG: dict = json.load(f)
 
 except Exception as e:
     sys.stderr.write(f"Error loading config.json file: {e}\n")
@@ -152,7 +152,33 @@ def _format_seconds(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def _download_file(url: str, token: str, output_dir: Path) -> Path:
+def _existing_zone_files(tld: str, output_dir: Path) -> list[Path]:
+    """Return all existing files in output_dir that belong to the given TLD."""
+    candidates = [
+        output_dir / f"{tld}.zone",
+        output_dir / f"{tld}.txt",
+        output_dir / f"{tld}.txt.gz",
+        output_dir / f"{tld}",
+    ]
+    return [p for p in candidates if p.exists()]
+
+
+def _unique_path(path: Path) -> Path:
+    """Return path if it doesn't exist, otherwise return com(1).txt, com(2).txt, …"""
+    if not path.exists():
+        return path
+    name = path.name
+    dot = name.find(".")
+    base, ext = (name[:dot], name[dot:]) if dot != -1 else (name, "")
+    i = 1
+    while True:
+        candidate = path.parent / f"{base}({i}){ext}"
+        if not candidate.exists():
+            return candidate
+        i += 1
+
+
+def _download_file(url: str, token: str, output_dir: Path, replace: bool = True) -> Path:
 
     r: requests.Response = requests.get(
         url,
@@ -171,6 +197,8 @@ def _download_file(url: str, token: str, output_dir: Path) -> Path:
         filename = url.split("/")[-1]
 
     path: Path = output_dir / filename
+    if not replace:
+        path = _unique_path(path)
 
     total: int = int(r.headers.get("Content-Length", 0))
     downloaded: int = 0
@@ -198,7 +226,7 @@ def _download_file(url: str, token: str, output_dir: Path) -> Path:
     return path
 
 
-def _download_file_aria2c(url: str, token: str, output_dir: Path) -> Path:
+def _download_file_aria2c(url: str, token: str, output_dir: Path, replace: bool = True) -> Path:
 
     r: requests.Response = requests.head(
         url,
@@ -216,11 +244,17 @@ def _download_file_aria2c(url: str, token: str, output_dir: Path) -> Path:
     if not filename:
         filename = url.split("/")[-1]
 
+    out_path: Path = output_dir / filename
+    if not replace:
+        out_path = _unique_path(out_path)
+
     cmd: list[str] = [
         "aria2c",
         "--header", f"Authorization: Bearer {token}",
         "--dir", str(output_dir),
-        "--out", filename,
+        "--out", out_path.name,
+        "--allow-overwrite=true",
+        "--auto-file-renaming=false",
         url,
     ]
 
@@ -229,16 +263,16 @@ def _download_file_aria2c(url: str, token: str, output_dir: Path) -> Path:
     if result.returncode != 0:
         sys.exit(result.returncode)
 
-    return output_dir / filename
+    return out_path
 
 
-def gunzip(path: pathlib.Path) -> pathlib.Path:
+def gunzip(path: Path) -> Path:
     print("Unpacking .txt.gz file...")
 
     if path.suffix != ".gz":
         raise ValueError("File must end with .gz")
 
-    outpath: pathlib.Path = path.with_suffix("")  # removes .gz
+    outpath: Path = path.with_suffix("")  # removes .gz
 
     with gzip.open(path, "rb") as f_in, open(outpath, "wb") as f_out:
         shutil.copyfileobj(f_in, f_out, length=16 * 1024 * 1024)
@@ -294,11 +328,18 @@ def download(**kwargs) -> None | NoReturn:
 
         print(f"Downloading .{tld.upper()} zone files...")
 
-        _set_cooldown(tld)
+        replace: bool = not kwargs.get("no_replace", False)
+
+        if replace:
+            for old in _existing_zone_files(tld, output_dir):
+                old.unlink()
+
         if kwargs.get("aria2c"):
-            gz_path: Path = _download_file_aria2c(url, token, output_dir)
+            gz_path: Path = _download_file_aria2c(url, token, output_dir, replace)
         else:
-            gz_path: Path = _download_file(url, token, output_dir)
+            gz_path: Path = _download_file(url, token, output_dir, replace)
+
+        _set_cooldown(tld)
 
         if not kwargs.get("no_gunzip"):
             txt_path: Path = gunzip(gz_path)
