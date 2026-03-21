@@ -23,6 +23,7 @@
 - Python **3.10** or higher
 - An approved [ICANN CZDS account](https://czds.icann.org/home), for downloading zone files.
 - [`pipx`](https://pypa.github.io/pipx/) (recommended) or `pip`
+- [`aria2`](https://aria2.github.io/) *(optional)* — only required if using the `--aria2c` download flag
 
 ---
 
@@ -116,11 +117,14 @@ czds download [OPTIONS]
 | `--output-dir PATH` | `-o` | Directory to save zone files (overrides config) |
 | `--no-gunzip` | `-G` | Skip automatic decompression of `.gz` files |
 | `--ignore-cooldown` | | ⚠️ Bypass the 24-hour download cooldown (see warning below) |
+| `--aria2c` | | Use `aria2c` as the download engine (see [Using aria2c](#using-aria2c)) |
+| `--no-replace` | | Keep existing zone files; new download gets a unique name, e.g. `com(1).txt` |
 
 **Notes:**
 - If `--zone` is omitted and `tlds` is empty in config, **all approved zones** will be downloaded.
 - Downloads are automatically decompressed from `.txt.gz` to `.txt` unless `--no-gunzip` is set.
 - A **24-hour cooldown** per TLD is enforced by default to comply with CZDS terms of service.
+- By default, re-downloading a TLD **replaces** any existing file for that TLD in the output directory. Use `--no-replace` to keep both.
 
 ---
 
@@ -225,6 +229,13 @@ czds download --zone com --output-dir /data/zones
 
 # Download with credentials inline (overrides config)
 czds download -u me@example.com -p MyPassword --zone com
+
+# Download using aria2c (faster on high-bandwidth connections)
+czds download --zone com --aria2c
+
+# Download without replacing the existing file
+czds download --zone com --no-replace
+# If com.txt already exists, the new file is saved as com(1).txt
 ```
 
 ### Search a single domain
@@ -287,6 +298,45 @@ czds search -x google.com -z "com, net, org"
 The CLI authenticates against the ICANN API, fetches your list of approved zone file URLs, and streams each file with a live progress indicator. Files are automatically decompressed from `.txt.gz` format on download.
 
 A per-TLD cooldown timestamp is written to the cache directory after each download. Re-downloading within 24 hours is blocked by default to respect CZDS rate limits.
+
+By default, downloading a TLD that already has a file in the output directory will **replace** that file. Existing `.zone`, `.txt`, and `.txt.gz` files for the TLD are removed before the new download begins, so the directory never accumulates stale copies. Pass `--no-replace` to disable this and save the new download under a unique name instead (`com(1).txt`, `com(2).txt`, …).
+
+### Using aria2c
+
+`aria2c` is an external download utility that can open **multiple parallel connections** to the same server. For zone files — which can be several gigabytes each — this often results in significantly faster downloads compared to a single HTTP stream, especially on high-bandwidth connections where the bottleneck is per-connection throughput rather than raw bandwidth.
+
+**When to use `--aria2c`:**
+- Your connection is fast (100 Mbps+) and single-stream downloads don't saturate it.
+- You are downloading large zones (`.com`, `.net`, `.org`) and want to reduce total download time.
+- You are already familiar with `aria2c` and want its resume and retry capabilities.
+
+**When the built-in downloader is sufficient:**
+- Your connection is average-speed — a single stream will already use all available bandwidth.
+- You prefer no extra dependencies.
+- You want the built-in progress display (`xx.xx%  x.x/x.x MB`), which aria2c replaces with its own output.
+
+**How it works:** Before launching `aria2c`, the CLI performs a `HEAD` request to resolve the filename from the server's `Content-Disposition` header. It then calls `aria2c` with the `Authorization: Bearer` token passed as a custom header, so authentication is handled transparently.
+
+**Install aria2:**
+
+```bash
+# Debian / Ubuntu
+sudo apt install aria2
+
+# macOS
+brew install aria2
+
+# Arch Linux
+sudo pacman -S aria2
+```
+
+```bash
+# Use aria2c for a specific zone
+czds download --zone com --aria2c
+
+# Combine with --no-replace to keep the existing file
+czds download --zone com --aria2c --no-replace
+```
 
 ### Search
 
