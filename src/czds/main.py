@@ -12,6 +12,7 @@ import time
 import gzip
 import mmap
 import shutil
+import subprocess
 
 import email.message as emsg
 import datetime      as dt
@@ -197,6 +198,40 @@ def _download_file(url: str, token: str, output_dir: Path) -> Path:
     return path
 
 
+def _download_file_aria2c(url: str, token: str, output_dir: Path) -> Path:
+
+    r: requests.Response = requests.head(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        allow_redirects=True,
+    )
+
+    r.raise_for_status()
+
+    cd = r.headers.get("Content-Disposition", "")
+    msg = emsg.Message()
+    msg["Content-Disposition"] = cd
+    filename = msg.get_param("filename", header="Content-Disposition")
+
+    if not filename:
+        filename = url.split("/")[-1]
+
+    cmd: list[str] = [
+        "aria2c",
+        "--header", f"Authorization: Bearer {token}",
+        "--dir", str(output_dir),
+        "--out", filename,
+        url,
+    ]
+
+    result = subprocess.run(cmd)
+
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+    return output_dir / filename
+
+
 def gunzip(path: pathlib.Path) -> pathlib.Path:
     print("Unpacking .txt.gz file...")
 
@@ -260,7 +295,10 @@ def download(**kwargs) -> None | NoReturn:
         print(f"Downloading .{tld.upper()} zone files...")
 
         _set_cooldown(tld)
-        gz_path: Path = _download_file(url, token, output_dir)
+        if kwargs.get("aria2c"):
+            gz_path: Path = _download_file_aria2c(url, token, output_dir)
+        else:
+            gz_path: Path = _download_file(url, token, output_dir)
 
         if not kwargs.get("no_gunzip"):
             txt_path: Path = gunzip(gz_path)

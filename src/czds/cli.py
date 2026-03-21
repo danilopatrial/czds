@@ -35,6 +35,7 @@ def cli(**kwargs) -> None:
 @click.option("--output-dir", "-o", type=click.Path(), help="Specify output directory.")
 @click.option("--no-gunzip", "-G", is_flag=True, help="Skip .txt.gz unziping.")
 @click.option("--ignore-cooldown", is_flag=True, help="[!] Ignore 24h cooldown. More info below.")
+@click.option("--aria2c", is_flag=True, help="Use aria2c for downloading.")
 def download(**kwargs) -> None:
     """
     Download Zone Files.
