@@ -266,8 +266,21 @@ def _download_file_aria2c(url: str, token: str, output_dir: Path, replace: bool 
     return out_path
 
 
+# Recognized zone-file suffixes, longest first so ".txt.gz" wins over ".gz".
+ZONE_SUFFIXES: tuple[str, ...] = (".txt.gz", ".zone.gz", ".gz", ".zone", ".txt")
+
+
+def _normalize_zone(zone: str) -> str:
+    """'.org', 'org.txt.gz', 'org.txt' -> 'org'."""
+    zone = zone.strip().lstrip(".")
+    for suffix in ZONE_SUFFIXES:
+        if zone.endswith(suffix):
+            return zone[: -len(suffix)]
+    return zone
+
+
 def gunzip(path: Path) -> Path:
-    print("Unpacking .txt.gz file...")
+    print("Unpacking .txt.gz file...", file=sys.stderr)
 
     if path.suffix != ".gz":
         raise ValueError("File must end with .gz")
@@ -351,18 +364,32 @@ def download(**kwargs) -> None | NoReturn:
 class Searcher(object):
 
     def __init__(self, zones_dir: Path | None = None) -> None:
-        self.zones_dir: Path = zones_dir if zones_dir else DATA_DIR
+        self.zones_dir: Path = Path(zones_dir) if zones_dir else DATA_DIR
         self._handles: dict[str, tuple] = {}
 
     def _open_zone(self, zone: str) -> tuple:
         if zone in self._handles: return self._handles[zone]
 
+        # Prefer already-uncompressed files — they can be mmap'd directly.
         candidates = [
             self.zones_dir / f"{zone}.zone",
             self.zones_dir / f"{zone}",
             self.zones_dir / f"{zone}.txt",
         ]
         path = next((p for p in candidates if p.exists()), None)
+
+        # Fall back to compressed files, decompressing on demand. mmap binary
+        # search needs plaintext, so a .gz must be gunzipped before it's usable.
+        if path is None:
+            gz_candidates = [
+                self.zones_dir / f"{zone}.txt.gz",
+                self.zones_dir / f"{zone}.zone.gz",
+                self.zones_dir / f"{zone}.gz",
+            ]
+            gz = next((p for p in gz_candidates if p.exists()), None)
+            if gz is not None:
+                path = gunzip(gz)
+
         if path is None:
             raise FileNotFoundError(f"Zone file for '{zone}' not found in {self.zones_dir}")
 
@@ -378,22 +405,21 @@ class Searcher(object):
         return self._handles[zone]
 
     def _available_zones(self) -> list[str]:
-        zones: list = []
-        valid_suffixes = (".zone", ".txt")
+        zones: set[str] = set()
         for p in self.zones_dir.iterdir():
             if not p.is_file(): continue
 
-            if not any(
-                p.name.endswith(s) for s in valid_suffixes
-            ) and "." in p.name:
-                continue 
-
             name: str = p.name
-            for suffix in valid_suffixes:
+            matched: bool = False
+            for suffix in ZONE_SUFFIXES:
                 if name.endswith(suffix):
-                    name = name[: -len(suffix)]; break
-            zones.append(name)
-        return zones
+                    zones.add(name[: -len(suffix)]); matched = True; break
+
+            # Accept extension-less files (e.g. "com"); skip anything else.
+            if not matched and "." not in name:
+                zones.add(name)
+
+        return sorted(zones)
 
     def _extract_domain_from_line(self, line: bytes) -> bytes:
         tab = line.find(b"\t")
@@ -526,7 +552,7 @@ class Searcher(object):
             target = target + b"."
 
         zones_to_search: list = (
-            [z.strip().lstrip(".") for z in zone.split(",")]
+            [_normalize_zone(z) for z in zone.split(",") if z.strip()]
             if zone else
             self._available_zones()
         )
