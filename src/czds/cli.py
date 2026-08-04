@@ -19,7 +19,7 @@ def cli(**kwargs) -> None:
         """
         The USERNAME and PASSWORD arguments are optional if they are already defined in the
         configuration file.\n
-        The ZONE argument, if missing or empty, means downloading all APPROVED tlds. You can
+        The ZONE argument, if missing or empty, means downloading ALL approved tlds. You can
         also specify the default tlds at the config file. For more than one zone at a time
         use comma separated values. --zone='.com, .org, .net'\n
         The IGNORE COOLDOWN flag allows the user to download zone files even if the 24-hour
@@ -35,8 +35,8 @@ def cli(**kwargs) -> None:
 @click.option("--output-dir", "-o", type=click.Path(), help="Specify output directory.")
 @click.option("--no-gunzip", "-G", is_flag=True, help="Skip .txt.gz unziping.")
 @click.option("--ignore-cooldown", is_flag=True, help="[!] Ignore 24h cooldown. More info below.")
-@click.option("--aria2c", is_flag=True, help="Use aria2c for downloading.")
-@click.option("--no-replace", is_flag=True, help="Keep existing zone files; new download gets a unique name e.g. com(1).txt.")
+@click.option("--aria2c", is_flag=True, help="Use aria2c for downloading. Recommended.")
+@click.option("--no-replace", is_flag=True, help="Keep existing zone files.")
 def download(**kwargs) -> None:
     """
     Download Zone Files.
